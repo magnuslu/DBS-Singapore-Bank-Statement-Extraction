@@ -3,6 +3,9 @@ This is my first GitHub project for the extraction of data from DBS Bank (Singap
 
 So far it works for CPF, SRS and Credit Card accounts only.
 
+Required python packages:
+os, pdfplumber, re, csv, sys
+
 There are three main python files.
 
 extract_data_from_pdf.py
