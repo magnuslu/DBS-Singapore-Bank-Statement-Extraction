@@ -10,6 +10,12 @@ def check_credit_card_file(line):
     else:
         return False
 
+def check_paylah_file(line):
+    if "PayLah!" in line:
+        return True
+    else:
+        return False
+
 def extract_from_description(description):
     transaction_type = "Others"
     quantity = ""
@@ -35,11 +41,13 @@ def extract_from_description(description):
 def has_regex_match(keyword, text):
     if keyword == "Credit Card":
         pattern = r'^\d{1,2} [a-zA-Z]{3}.*\d+\.\d{2}$'
+    elif keyword == "PayLah":
+        pattern = r'^\d{1,2} [a-zA-Z]{3}.*\d+\.\d{2}'
     elif keyword in ["Supplementary Retirement Scheme Account", "CPF Investment Scheme"]:
         pattern = r'^\d{1,2} [a-zA-Z]{3} '
     else:
         return False
-
+    
     return bool(re.search(pattern, text))
 
 def extract_product_name(description, transaction_type):
@@ -48,7 +56,7 @@ def extract_product_name(description, transaction_type):
         # Define the pattern to match the product name
         pattern = r'(\d{2,}\s.*?)(?=\bref\b)'
         # Search for the pattern in the description
-        print(description)
+#        print(description)
         match = re.search(pattern, description, flags=re.IGNORECASE)
         if match:
             # Extract the captured substring (product name)
@@ -67,7 +75,7 @@ def extract_product_name(description, transaction_type):
         pattern = r'Total.*'
         # Use re.sub() to replace all occurrences of the pattern with an empty string
         product_name = re.sub(pattern, '', product_name, flags=re.IGNORECASE)
-        print(product_name)
+#        print(product_name)
         return product_name
     else:
         return ""
@@ -213,10 +221,17 @@ def extract_data_old_format(text, keyword, year):
             processing_row = False
             account_type = "CPF"
 
-        # Condition 1: Look for a line that starts with "NEW TRANSACTIONS" for Credit Card pages
+        # Condition 1:  for Credit Card pages
         if keyword == "Credit Card":
             parsing_data = True
             account_type = "Credit Card"
+            transaction_type = ""
+            quantity = ""
+
+        # Condition 1:  for PayLah pages
+        if keyword == "PayLah":
+            parsing_data = True
+            account_type = "PayLah"
             transaction_type = ""
             quantity = ""
 
@@ -241,21 +256,25 @@ def extract_data_old_format(text, keyword, year):
         # If we are currently parsing data rows
         if parsing_data:
             # Condition 2: Look for lines that start with a date in the format "DD MMM"
+
             if has_regex_match(keyword, line):
                 sign = ""
                 # If the line ends with CR, it's a negative value, and remove "CR"
                 if re.match(r".*CR$", line):
                     # Remove the "CR"
-                    print("CREDIT", line)
                     line = re.sub(r"CR$", "", line)
+                elif re.match(r".*DB$", line):
+                    # Remove the "DB"
+                    line = re.sub(r"DB$", "", line)
                     sign = "-"
 
-                if processing_row:
+                if processing_row: # Save the previous line
 
                     product_name = extract_product_name(description, transaction_type)
 
                     # Append data to the list
                     data.append({"Date": date, "Description": description, "Amount": amount, "Account Type": account_type, "Transaction Type": transaction_type, "Quantity": quantity, "Price": calculate_price(amount, quantity), "Product Name": product_name})
+
                 processing_row = True
 
                 # Extract date, description, and amount
@@ -289,6 +308,12 @@ def extract_data_old_format(text, keyword, year):
                     # Amount is the second last part
                     amount = parts[-1]
 
+                if account_type == "PayLah":
+                    # Description is everything between the date and the third last part (amount)
+                    description = ' '.join(parts[2:-1])
+                    # Amount is the second last part
+                    amount = sign + parts[-1]
+
                 # Condition 5: Ignore any row that only has a date followed by an amount, meaning, description is empty
                 if account_type in ("CPF", "SRS"):
                     if description:
@@ -298,7 +323,6 @@ def extract_data_old_format(text, keyword, year):
 
                     else:
                     # If there is no description, we're not processing a valid row
-                        print(line)
                         processing_row = False
 
             elif processing_row:
@@ -319,7 +343,7 @@ def extract_dbs_statement_data(directory, output_file):
         # CSV writer
         writer = csv.DictWriter(csvfile, fieldnames=["Date", "Description", "Amount", "Account Type", "Transaction Type", "Quantity", "Price", "Product Name"])
         writer.writeheader()
-        
+
         # Iterate over each PDF file in the directory
         for filename in os.listdir(directory):
             if filename.endswith(".pdf"):
@@ -328,6 +352,9 @@ def extract_dbs_statement_data(directory, output_file):
                 with pdfplumber.open(os.path.join(directory, filename)) as pdf:
 
                     is_credit_card_file = check_credit_card_file(pdf.pages[0].extract_text())
+
+                    if not is_credit_card_file:
+                        is_paylah_file = check_paylah_file(pdf.pages[0].extract_text())
 
                     # Iterate over each page in the PDF
                     for page_number, page in enumerate(pdf.pages, start=1):
@@ -355,8 +382,11 @@ def extract_dbs_statement_data(directory, output_file):
                         if is_credit_card_file:
                             # Extract credit card data
                             extracted_data = extract_data_old_format(text, "Credit Card", year)
+                        elif is_paylah_file:
+                            # Extract PayLah! data
+                            extracted_data = extract_data_old_format(text, "PayLah", year)
 
-                        else:
+                        else: # Consolidated Statement
                             # Extract data for CPF Investment Scheme
                             cpf_data = extract_data(text, "CPF Investment Scheme")
                             
@@ -364,8 +394,9 @@ def extract_dbs_statement_data(directory, output_file):
                             supplementary_data = extract_data(text, "Supplementary Retirement Scheme Account")
                             supplementary_data_2 = extract_data_old_format(text, "Supplementary Retirement Scheme Account", year)
                         
-                        # Combine cpf_data and supplementary_data into a single list
+                            # Combine cpf_data and supplementary_data into a single list
                             extracted_data = cpf_data + supplementary_data + supplementary_data_2
+#                            print("CPF/SRS Data: " + str(len(extracted_data)))
                     
                         # Write the combined data to CSV file
                         for row in extracted_data:
@@ -392,3 +423,4 @@ if __name__ == "__main__":
 
     # Call the function to extract data from the PDF file
     extract_dbs_statement_data(directory, output_file)
+    print(output_file)

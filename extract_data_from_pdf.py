@@ -11,14 +11,60 @@ def extract_data_from_pdf(page_number, pdf_file_path):
     with pdfplumber.open(pdf_file_path) as pdf:
         # Get the specified page
         page = pdf.pages[page_number - 1]
-        
-        # Extract tables from the page
-        tables = page.extract_tables()
-        print(tables)
-        
+
+
+        page.extract_text(x_tolerance=3, x_tolerance_ratio=None, y_tolerance=3, layout=False, x_density=7.25, y_density=13, line_dir_render=None, char_dir_render=None, **kwargs)
+
+        # ts = {
+        #     "vertical_strategy": "lines",
+        #     "horizontal_strategy": "text",
+        #     "snap_tolerance": 5,
+        #     "intersection_tolerance": 15,
+        # }
+
         # Extract text from the page
         text = page.extract_text()
         text_lines = text.split('\n')
+        print(text)
+        # # Extract tables from the page
+        # tables = page.extract_tables(table_settings=ts)
+        tables = page.extract_tables()
+
+        # Remove empty sublists
+#        tables = [sublist for sublist in tables if any(item != '' for item in sublist)]
+#        tables = [sublist for sublist in tables if sublist != ['', '', '', '', '', '']]
+#        tables = list(filter(lambda x: x != ['', '', '', '', '', ''], tables))
+#        tables = [sublist for sublist in tables if sublist != ['', '', '', '', '', '']]
+#        while [''] * 6 in tables:
+#            tables.remove([''] * 6)
+
+        im = page.to_image()
+#        im.show()
+        im.reset().debug_tablefinder().show()
+        cleaned_dataset = []
+        # for sublist in tables:
+        #     for subsublist in sublist:
+        #         if subsublist != ['', '', '', '', '', ''] and subsublist != ['', '', '', '', '']:
+        #             cleaned_dataset.append(subsublist)
+
+        print(tables.count)
+        for subsublist in tables[2]:
+            if subsublist != ['', '', '', '', '', ''] and subsublist != ['', '', '', '', '']:
+                cleaned_dataset.append(subsublist)
+
+        tables = cleaned_dataset
+#        print(tables)
+
+        for row in tables:
+            filtered_row = [str(cell) for cell in row if cell is not None]
+#            txt_file.write('\t'.join(filtered_row) + '\n')
+            print(filtered_row)
+
+#        print(tables)
+        
+
+#        print(page.extract_tables(table_settings=ts))
+
         
         # Create a text file with the same name as the PDF file but with a txt extension
         txt_file_path = os.path.splitext(pdf_file_path)[0] + '.txt'
@@ -31,7 +77,7 @@ def extract_data_from_pdf(page_number, pdf_file_path):
                 if table is not None:
                     for row in table:
                         if row is not None:
-                            print(row)
+#                            print(row)
                             filtered_row = [str(cell) for cell in row if cell is not None]
                             txt_file.write('\t'.join(filtered_row) + '\n')
                     txt_file.write('\n\n')

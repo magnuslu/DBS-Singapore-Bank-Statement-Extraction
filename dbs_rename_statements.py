@@ -15,8 +15,13 @@ def convert_date_format(date_str):
 import re
 
 def extract_date_for_credit_card(line, table):
-    if not "Credit Cards" in line and not "credit cards " in line and not "will be levied on each card account":
-        print("No Credit Cards")
+
+    if "PayLah" in line:
+        file_type = "PayLah"
+    elif "Credit Cards" in line or "credit cards " in line or "will be levied on each card account":
+        file_type = "Credit Card"
+    else:
+        print("No Credit Cards or PayLah")
         return None
 
     # Find the index of the "STATEMENT DATE" column
@@ -37,7 +42,7 @@ def extract_date_for_credit_card(line, table):
             month = datetime.datetime.strptime(month_str, "%b").month
             # Format the date as YYYY-MM
             formatted_date = f"{year}-{month:02d}"
-            return "Credit Cards Statement - " + formatted_date + ".pdf"
+            return file_type + " Statement - " + formatted_date + ".pdf"
 
     return None
 
@@ -72,11 +77,9 @@ def rename_statements(directory):
                     
                     # Iterate over each line in the text
                     for line in lines:
-        #                print(line)
                         # Check if "Account Summary" is present
                         if "Account Summary" in line or "ACCOUNT SUMMARY" in line:
                             account_summary_found = True
-        #                    print(line)  # Print each line to the console for troubleshooting
                         
                         # Extract the appended text
                         match = re.search(r'as at (.+)', line)
@@ -109,7 +112,7 @@ def rename_statements(directory):
 # Example usage:
 if __name__ == "__main__":
     # Check if the correct number of command-line arguments are provided
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 2:
         print("Usage: python dbs_rename_statements.py DIRECTORY.")
         sys.exit(1)
 
