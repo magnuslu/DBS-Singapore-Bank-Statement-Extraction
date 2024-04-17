@@ -40,7 +40,8 @@ def extract_from_description(description):
 
 def has_regex_match(keyword, text):
     if keyword == "Credit Card":
-        pattern = r'^\d{1,2} [a-zA-Z]{3}.*\d+\.\d{2}$'
+#        pattern = r'^\d{1,2} [a-zA-Z]{3}.*\d+\.\d{2}$'
+        pattern = r'^\d{1,2} [a-zA-Z]{3}.*\d+\.\d{2}(?:(?: ?(?:CR|DB))(?!\S))?$'
     elif keyword == "PayLah":
         pattern = r'^\d{1,2} [a-zA-Z]{3}.*\d+\.\d{2}'
     elif keyword in ["Supplementary Retirement Scheme Account", "CPF Investment Scheme"]:
@@ -245,10 +246,11 @@ def extract_data_old_format(text, keyword, year):
             parsing_data = False
             processing_row = False
         
-        # Condition 4: End the search when you find "Balance Carried Forward" at the beginning of a line and start looking for "SRS Account" again.
-        if line.startswith("GRAND TOTAL FOR ALL CARD ACCOUNTS"):
+        # Condition 4: End the search when you find the below strings at the beginning of a line.
+        if line.startswith("GRAND TOTAL FOR ALL CARD ACCOUNTS") or line.startswith("NEW TRANSACTIONS"):
             if processing_row:
                 # Append data to the list
+                product_name = ""
                 data.append({"Date": date, "Description": description, "Amount": amount, "Account Type": account_type, "Transaction Type": transaction_type, "Quantity": quantity, "Price": calculate_price(amount, quantity), "Product Name": product_name})
             parsing_data = False
             processing_row = False
@@ -258,7 +260,7 @@ def extract_data_old_format(text, keyword, year):
             # Condition 2: Look for lines that start with a date in the format "DD MMM"
 
             if has_regex_match(keyword, line):
-                sign = ""
+                sign = "+"
                 # If the line ends with CR, it's a negative value, and remove "CR"
                 if re.match(r".*CR$", line):
                     # Remove the "CR"
@@ -266,6 +268,8 @@ def extract_data_old_format(text, keyword, year):
                 elif re.match(r".*DB$", line):
                     # Remove the "DB"
                     line = re.sub(r"DB$", "", line)
+                    sign = "-"
+                else:
                     sign = "-"
 
                 if processing_row: # Save the previous line
@@ -306,7 +310,7 @@ def extract_data_old_format(text, keyword, year):
                     # Description is everything between the date and the second last part (amount)
                     description = ' '.join(parts[2:-1])
                     # Amount is the second last part
-                    amount = parts[-1]
+                    amount = sign + parts[-1]
 
                 if account_type == "PayLah":
                     # Description is everything between the date and the third last part (amount)
