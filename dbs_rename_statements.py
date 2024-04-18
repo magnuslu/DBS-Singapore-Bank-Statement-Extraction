@@ -14,7 +14,7 @@ def convert_date_format(date_str):
 
 import re
 
-def extract_date_for_credit_card(line, table):
+def extract_date_for_credit_card(line):
 
     if "PayLah" in line:
         file_type = "PayLah"
@@ -24,27 +24,25 @@ def extract_date_for_credit_card(line, table):
         print("No Credit Cards or PayLah")
         return None
 
-    # Find the index of the "STATEMENT DATE" column
-    statement_date_index = None
-    for i, header in enumerate(table[0]):
-        if "STATEMENT DATE" in header.upper():
-            statement_date_index = i
-            break
+    # Define the regular expression pattern to match the date
+    date_pattern = r'\b(0?[1-9]|[12]\d|3[01]) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (20\d{2}|2099)\b'
 
-    # If the "STATEMENT DATE" column is found, extract the date from the corresponding row
-    if statement_date_index is not None:
-        statement_date_cell = table[1][statement_date_index]
-        date_match = re.search(r'(\d{1,2}) ([a-zA-Z]{3}) (\d{4})', str(statement_date_cell))
-        if date_match:
-            # Extract day, month, and year from the matched date
-            day, month_str, year = date_match.groups()
-            # Convert month abbreviation to numeric representation
-            month = datetime.datetime.strptime(month_str, "%b").month
-            # Format the date as YYYY-MM
-            formatted_date = f"{year}-{month:02d}"
-            return file_type + " Statement - " + formatted_date + ".pdf"
+    # Search for the first occurrence of the date pattern in the line
+    date_match = re.search(date_pattern, line)
 
-    return None
+    # If a match is found, extract the matched date
+    if date_match:
+        matched_date = date_match.group(0)
+        
+        # Parse the matched date string into a datetime object
+        date_obj = datetime.datetime.strptime(matched_date, '%d %b %Y')
+
+        # Format the datetime object as YYYY-MM
+        formatted_date = date_obj.strftime('%Y-%m')
+        return file_type + " Statement - " + formatted_date + ".pdf"
+    else:
+        print("No date found")
+        return None
 
 def rename_statements(directory):
     # Iterate over each PDF file in the directory
@@ -59,7 +57,8 @@ def rename_statements(directory):
                 # Split the text into lines
                 lines = first_page_text.split('\n')
                 
-                credit_card_file_name = extract_date_for_credit_card(first_page_text, pdf.pages[0].extract_table())
+                # credit_card_file_name = extract_date_for_credit_card(first_page_text, pdf.pages[0].extract_table())
+                credit_card_file_name = extract_date_for_credit_card(first_page_text)
 
                 if credit_card_file_name != None:
                     # Close the PDF file before renaming
