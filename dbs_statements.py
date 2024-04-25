@@ -1,10 +1,16 @@
+from enum import Enum
+import csv
+import customtkinter
+from customtkinter import CTkLabel, CTkEntry, CTkButton, filedialog
+# from customtkinter import Label, CTkEntry, Button, filedialog
+import json
 import os
 import pdfplumber
 import re
-import csv
 import sys
-from enum import Enum
 import time
+# import tkinter as tk
+# from tkinter import filedialog
 
 class ReadingState(Enum):
     NONE = 0
@@ -15,6 +21,8 @@ class ReadingState(Enum):
     CREDIT_CARD = 5
     PAYLAH = 6
     FIXED_DEPOSIT = 7
+
+CONFIG_FILE = "config.json"
 
 def check_credit_card_file(line):
     if "Credit Cards" in line or "credit cards " in line or "will be levied on each card account" in line:
@@ -273,8 +281,9 @@ def extract_savings_account_data(lines, start_index, current_state, currency, ye
     while i < len(lines):
         line = lines[i]
         if detect_end_of_account_transactions(lines[i], current_state):
-        # if re.search(r"(Balance Carried Forward|Total Balance Carried Forward)", line):
-            break
+            # break
+            i = i + 1
+            continue
 
         # Extract currency
         if re.search(r"CURRENCY: (.+)", line):
@@ -291,8 +300,9 @@ def extract_savings_account_data(lines, start_index, current_state, currency, ye
             i += 1
             continue
 
-        # # Match lines starting with date format
-        date_pattern = r'\b(0?[1-9]|[12]\d|3[01]) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?: (20\d{2}|2099))?\b'
+        # # Match lines starting with date format either DD MMM 20YY or DD/MM/20YY
+        # date_pattern = r'\b(0?[1-9]|[12]\d|3[01]) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?: (20\d{2}|2099))?\b'
+        date_pattern = r'\b((0?[1-9]|[12]\d|3[01]) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?: (20\d{2}|2099))?)|(0?[1-9]|[12]\d|3[01])/(0?[1-9]|1[0-2])/((20\d{2}|2099))\b'
 
         match = re.match(date_pattern, line, re.IGNORECASE)
         if match:
@@ -300,7 +310,13 @@ def extract_savings_account_data(lines, start_index, current_state, currency, ye
             transaction_details = line[len(date):].split()  # Split the remaining part after the date
 
             #Add the year in case it is not already included
-            if len(match.groups()) == 3:
+            # Define a regular expression pattern to match dates with "20YY" in them
+            pattern = r'\d{4}'
+            # Search for the pattern in the text
+            match = re.search(pattern, date)
+            # If a match is found, return True, otherwise return False
+
+            if not bool(match):
                 date = date + " " + str(year)
 
             # Look ahead to see if there is another line for the description
@@ -338,9 +354,6 @@ def extract_savings_account_data(lines, start_index, current_state, currency, ye
                 account_type = "DBS Multiplier Account"
             elif current_state == ReadingState.SAVINGS_ACCOUNT:
                 account_type = "DBS Savings Account"
-
-            if amount == "0.60":
-                b = True
 
             transactions.append({
                         "Account Type": account_type,
@@ -462,6 +475,8 @@ def extract_data_old_format(text, keyword, year):
     return data
 
 def extract_dbs_statement_data(directory, output_file):
+    start_time = time.time()
+
     # Open CSV file for writing
     with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
         # CSV writer
@@ -475,33 +490,58 @@ def extract_dbs_statement_data(directory, output_file):
                 # Open the PDF file
                 with pdfplumber.open(os.path.join(directory, filename)) as pdf:
 
-                    is_credit_card_file = check_credit_card_file(pdf.pages[0].extract_text())
+                    first_page = pdf.pages[0].extract_text()
+                    is_credit_card_file = check_credit_card_file(first_page)
 
                     if not is_credit_card_file:
-                        is_paylah_file = check_paylah_file(pdf.pages[0].extract_text())
+                        is_paylah_file = check_paylah_file(first_page)
+
+                    year_match = re.search(r'\d{1,2} [a-zA-Z]{3} (\d{4})', first_page)
+                    if year_match:
+                        year = year_match.group(1)
+                    else:
+                        year = None                    
+
+                    # # Get the year from the first page
+                    # if (page_number == 1):
+                    #     # Extract year from "As at DD MMM YYYY"
+                    #     year_match = re.search(r'As at \d{1,2} \w{3} (\d{4})', first_page)
+                    #     if year_match:
+                    #         year = year_match.group(1)
+                    #     else:
+                    #         year = None                    
+                    
+                    # # Get the year from the first page
+                    # if (page_number == 1):
+                    #     # Extract year from "DD MMM YYYY"
+                    #     year_match = re.search(r'\d{1,2} [a-zA-Z]{3} (\d{4})', first_page)
+                    #     if year_match:
+                    #         year = year_match.group(1)
+                    #     else:
+                    #         year = None                    
 
                     # Iterate over each page in the PDF
                     for page_number, page in enumerate(pdf.pages, start=1):
                         # Extract text from the page
                         text = page.extract_text()
                         
-                        # Get the year from the first page
-                        if (page_number == 1):
-                            # Extract year from "As at DD MMM YYYY"
-                            year_match = re.search(r'As at \d{1,2} \w{3} (\d{4})', text)
-                            if year_match:
-                                year = year_match.group(1)
-                            else:
-                                year = None                    
+                        # # Get the year from the first page
+                        # if (page_number == 1):
+                        #     # Extract year from "As at DD MMM YYYY"
+                        #     year_match = re.search(r'As at \d{1,2} \w{3} (\d{4})', text)
+                        #     if year_match:
+                        #         year = year_match.group(1)
+                        #     else:
+                        #         year = None                    
                         
-                        # Get the year from the first page
-                        if (page_number == 1):
-                            # Extract year from "DD MMM YYYY"
-                            year_match = re.search(r'\d{1,2} [a-zA-Z]{3} (\d{4})', text)
-                            if year_match:
-                                year = year_match.group(1)
-                            else:
-                                year = None                    
+                        # # Get the year from the first page
+                        # if (page_number == 1):
+                        #     # Extract year from "DD MMM YYYY"
+                        #     year_match = re.search(r'\d{1,2} [a-zA-Z]{3} (\d{4})', text)
+                        #     if year_match:
+                        #         year = year_match.group(1)
+                        #     else:
+                        #         year = None                    
 
                         if is_credit_card_file:
                             # Extract credit card data
@@ -525,7 +565,140 @@ def extract_dbs_statement_data(directory, output_file):
                         for row in extracted_data:
                             writer.writerow(row)
 
+    end_time = time.time()
+
+    execution_time_seconds = end_time - start_time
+    execution_time_minutes = int(execution_time_seconds // 60)
+    execution_time_seconds = int(execution_time_seconds % 60)
+
+    execution_time_formatted = "{:02d}:{:02d}".format(execution_time_minutes, execution_time_seconds)
+    print("Execution time:", execution_time_formatted)
     print("Data extracted and saved to ", output_file)
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as file:
+            return json.load(file)
+    else:
+        return {"folder1": "", "folder2": "", "file1": "", "file2": ""}
+
+def save_config(config):
+    with open(CONFIG_FILE, "w") as file:
+        json.dump(config, file)
+
+def update_config(config, key, value):
+    config[key] = value
+    save_config(config)
+
+def select_folder1(config, entry_folder1):
+    folder_path = filedialog.askdirectory()
+    entry_folder1.delete(0, tk.END)
+    entry_folder1.insert(0, folder_path)
+    config["folder1"] = folder_path
+    save_config(config)
+
+def select_folder2(config, entry_folder2):
+    folder_path = filedialog.askdirectory()
+    entry_folder2.delete(0, tk.END)
+    entry_folder2.insert(0, folder_path)
+    config["folder2"] = folder_path
+    save_config(config)
+
+def select_file1(config, entry_file1):
+    file_path = filedialog.askopenfilename()
+    entry_file1.delete(0, tk.END)
+    entry_file1.insert(0, file_path)
+    config["file1"] = file_path
+    save_config(config)
+
+def select_file2(config, entry_file2):
+    file_path = filedialog.askopenfilename()
+    entry_file2.delete(0, tk.END)
+    entry_file2.insert(0, file_path)
+    config["file2"] = file_path
+    save_config(config)
+
+def function1():
+    # Function 1 logic goes here
+    print("Function 1 called")
+
+def function2():
+    # Function 2 logic goes here
+    print("Function 2 called")
+
+def function3():
+    # Function 3 logic goes here
+    print("Function 3 called")
+
+def ui_function():
+    def entry_modified(event):
+        widget = event.widget
+        key = widget.config()["textvariable"][-1]
+        value = widget.get()
+        update_config(config, key, value)
+
+    # Load configuration
+    config = load_config()
+
+    # Create the main application window
+    # root = tk.Tk()
+    root = customtkinter.CTk()
+    root.title("Folder and File Selection")
+
+    # Set the width and height of the window
+    window_width = 800
+    window_height = 300
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x_coordinate = (screen_width / 2) - (window_width / 2)
+    y_coordinate = (screen_height / 2) - (window_height / 2)
+
+    root.geometry("%dx%d+%d+%d" % (window_width, window_height, x_coordinate, y_coordinate))
+
+    # Select Folder 1
+    label_folder1 = CTkLabel(root, text="PDF Files Folder:")
+    label_folder1.grid(row=0, column=0, sticky="w")
+    entry_folder1 = CTkEntry(root, width=50)
+    entry_folder1.grid(row=0, column=1)
+    entry_folder1.insert(0, config["folder1"])
+    entry_folder1.bind("<<Modified>>", entry_modified)
+    button_folder1 = CTkButton(root, text="Browse", command=lambda: select_folder1(config, entry_folder1))
+    button_folder1.grid(row=0, column=2)
+
+    # Select Folder 2
+    label_folder2 = CTkLabel(root, text="Renamed PDF Files Output Folder:")
+    label_folder2.grid(row=1, column=0, sticky="w")
+    entry_folder2 = CTkEntry(root, width=50)
+    entry_folder2.grid(row=1, column=1)
+    entry_folder2.insert(0, config["folder2"])
+    entry_folder2.bind("<<Modified>>", entry_modified)
+    button_folder2 = CTkButton(root, text="Browse", command=lambda: select_folder2(config, entry_folder2))
+    button_folder2.grid(row=1, column=2)
+
+    # Select File 1
+    label_file1 = CTkLabel(root, text="Extracted CSV Full Path (Including '.csv'):")
+    label_file1.grid(row=2, column=0, sticky="w")
+    entry_file1 = CTkEntry(root, width=50)
+    entry_file1.grid(row=2, column=1)
+    entry_file1.insert(0, config["file1"])
+    entry_file1.bind("<<Modified>>", entry_modified)
+    button_file1 = CTkButton(root, text="Browse", command=lambda: select_file1(config, entry_file1))
+    button_file1.grid(row=2, column=2)
+
+     # Button to call Function 1
+    button_function1 = CTkButton(root, text="Extract Statement Data", command=lambda: extract_dbs_statement_data(entry_folder1.get(), entry_file1.get()))
+    button_function1.grid(row=4, column=0)
+
+    # Button to call Function 2
+    button_function2 = CTkButton(root, text="Rename PDF Files (WIP)", command=function2)
+    button_function2.grid(row=4, column=1)
+
+    # Button to call Function 3
+    button_function3 = CTkButton(root, text="Update Transaction Categories (WIP)", command=function3)
+    button_function3.grid(row=4, column=2)
+
+    # Run the main event loop
+    root.mainloop()
 
 # Example usage:
 if __name__ == "__main__":
@@ -546,8 +719,9 @@ if __name__ == "__main__":
 
     start_time = time.time()
 
+    ui_function()
     # Call the function to extract data from the PDF file
-    extract_dbs_statement_data(directory, output_file)
+    # extract_dbs_statement_data(directory, output_file)
     print(output_file)
 
     end_time = time.time()
